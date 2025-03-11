@@ -47,24 +47,6 @@ class LocalTaskRepository implements TaskRepository {
   }
 }
 
-abstract class TaskFilter {
-  List<Task> filter(List<Task> tasks);
-}
-
-class CompletedTaskFilter implements TaskFilter {
-  @override
-  List<Task> filter(List<Task> tasks) {
-    return tasks.where((task) => task.isCompleted).toList();
-  }
-}
-
-class PendingTaskFilter implements TaskFilter {
-  @override
-  List<Task> filter(List<Task> tasks) {
-    return tasks.where((task) => !task.isCompleted).toList();
-  }
-}
-
 class TaskController with ChangeNotifier {
   final TaskRepository _repository;
 
@@ -88,6 +70,12 @@ class TaskController with ChangeNotifier {
     _repository.deleteTask(id);
     notifyListeners();
   }
+
+  void editTask(Task task, String newTitle) {
+    final updatedTask = Task(id: task.id, title: newTitle, isCompleted: task.isCompleted);
+    _repository.updateTask(updatedTask);
+    notifyListeners();
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -106,57 +94,75 @@ class MyApp extends StatelessWidget {
 }
 
 class TaskScreen extends StatelessWidget {
-  TaskScreen({super.key});
+  const TaskScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final taskController = Provider.of<TaskController>(context);
-    
-    return Scaffold(
-      appBar: AppBar(title: const Text('To-Do List')),
-      body: ListView.builder(
-        itemCount: taskController.getTasks().length,
-        itemBuilder: (context, index) {
-          final task = taskController.getTasks()[index];
-          return Dismissible(
-            key: Key(task.id),
-            direction: DismissDirection.endToStart,
-            onDismissed: (_) {
-              taskController.deleteTask(task.id);
-            },
-            background: Container(
-              color: Colors.red,
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 20.0),
-              child: const Icon(Icons.delete, color: Colors.white),
-            ),
-            child: ListTile(
-              title: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  task.title,
-                  style: TextStyle(
-                    decoration: task.isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
+    return Consumer<TaskController>(
+      builder: (context, taskController, child) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('To-Do List')),
+          body: ListView.builder(
+            itemCount: taskController.getTasks().length,
+            itemBuilder: (context, index) {
+              final task = taskController.getTasks()[index];
+              return Dismissible(
+                key: Key(task.id),
+                background: Container(
+                  color: Colors.red,
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.only(left: 20.0),
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                secondaryBackground: Container(
+                  color: Colors.blue,
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20.0),
+                  child: const Icon(Icons.edit, color: Colors.white),
+                ),
+                direction: DismissDirection.horizontal,
+                confirmDismiss: (direction) async {
+                  if (direction == DismissDirection.startToEnd) {
+                    taskController.deleteTask(task.id);
+                    return true;
+                  } else if (direction == DismissDirection.endToStart) {
+                    final newTitle = await _showEditTaskDialog(context, task.title);
+                    if (newTitle != null && newTitle.isNotEmpty) {
+                      taskController.editTask(task, newTitle);
+                    }
+                    return false;
+                  }
+                  return false;
+                },
+                child: ListTile(
+                  title: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      task.title,
+                      style: TextStyle(
+                        decoration: task.isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                  trailing: Checkbox(
+                    value: task.isCompleted,
+                    onChanged: (_) => taskController.toggleTaskCompletion(task),
                   ),
                 ),
-              ),
-              trailing: Checkbox(
-                value: task.isCompleted,
-                onChanged: (_) => taskController.toggleTaskCompletion(task),
-              ),
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final title = await _showAddTaskDialog(context);
-          if (title != null && title.isNotEmpty) {
-            taskController.addTask(title);
-          }
-        },
-        child: const Icon(Icons.add),
-      ),
+              );
+            },
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () async {
+              final title = await _showAddTaskDialog(context);
+              if (title != null && title.isNotEmpty) {
+                taskController.addTask(title);
+              }
+            },
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
     );
   }
 
@@ -181,6 +187,32 @@ class TaskScreen extends StatelessWidget {
             TextButton(
               onPressed: () => Navigator.pop(context, taskTitle),
               child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<String?> _showEditTaskDialog(BuildContext context, String currentTitle) async {
+    TextEditingController controller = TextEditingController(text: currentTitle);
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Edit Task'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(hintText: 'Edit task title'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Save'),
             ),
           ],
         );
